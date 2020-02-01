@@ -2,18 +2,17 @@
 # -*- coding: utf-8 -*-
 
 import pygame
-from PIL import Image
 import os
 from copy import deepcopy
 import random as rn
-
+import time
 
 
 def load_image(name, colorkey=None):
     way = os.getcwd()
-    print(way)
+    #print(way)
     fullname = way + '\\' +  os.path.join('data\\images\\', name)
-    print(fullname)
+    #print(fullname)
     image = pygame.image.load(fullname).convert()
     if colorkey is not None:
         if colorkey == -1:
@@ -29,6 +28,7 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 cell_size = 32
 is_full_screen = 0
+is_game_now = True
 
 
 with open('data\\stages\\stage_1.txt', encoding='utf-8') as f:
@@ -38,7 +38,12 @@ with open('data\\stages\\stage_1.txt', encoding='utf-8') as f:
 pygame.init()
 
 
-w, h = cell_size * 15 + 10, cell_size * 13 + 55
+
+pygame.font.init()
+myfont = pygame.font.SysFont('sitkasmallsitkatextbolditalicsitkasubheadingbolditalicsitkaheadingbolditalicsitkadisplaybolditalicsitkabannerbolditalic', 35, bold = True)
+
+
+w, h = cell_size * 15 + 10, cell_size * 13 + 55 #490, 471
 
 sc = pygame.display.set_mode((w, h))
 
@@ -58,13 +63,14 @@ orange_front_anim = resize_sp([load_image(f'norm_orange_bombermen\\men{i}.png', 
 orange_right_anim = resize_sp([load_image(f'norm_orange_bombermen\\men{i}.png', -1) for i in range(6, 9)])
 orange_nazad_anim = resize_sp([load_image(f'norm_orange_bombermen\\men{i}.png', -1) for i in range(9, 12)])
 orange_die_anim = resize_sp([load_image(f'norm_orange_bombermen\\men{i}.png', -1) for i in range(12, 18)])
-
+orange_victory = resize_sp([load_image(f'norm_orange_bombermen\\orange_win.png', -1) for i in range(1)])[0]
 
 white_nazad_anim = resize_sp([load_image(f'white_bombermen\\men{i}.png', -1) for i in range(3)])
 white_left_anim = resize_sp([load_image(f'white_bombermen\\men{i}.png', -1) for i in range(3, 6)])
 white_front_anim = resize_sp([load_image(f'white_bombermen\\men{i}.png', -1) for i in range(6, 9)])
 white_right_anim = resize_sp([load_image(f'white_bombermen\\men{i}.png', -1) for i in range(9, 12)])
 white_die_anim = resize_sp([load_image(f'white_bombermen\\men{i}.png', -1) for i in range(12, 21)])
+white_victory = resize_sp([load_image(f'white_bombermen\\white_win.png', -1) for i in range(1)])[0]
 
 
 stone = pygame.transform.scale2x(load_image('enviroment\\stone.png'))
@@ -86,6 +92,12 @@ bonus_plus_fire_size = resize_sp([load_image(f'bonuses\\plus_fire_size{i + 1}.pn
 bonus_plus_speed = resize_sp([load_image(f'bonuses\\plus_speed{i + 1}.png') for i in range(2)])
 bonus_podrivnik = resize_sp([load_image(f'bonuses\\podrivnik{i + 1}.png') for i in range(2)])
 bonus_die = resize_sp([load_image(f'bonuses\\die{i + 1}.png') for i in range(2)])
+
+
+game_over_pole = load_image(f'dich.png')
+victory_word = resize_sp([load_image(f'victory_word.png', -1) for i in range(1)])[0]
+
+
 
 FPS = 60
 clock = pygame.time.Clock()
@@ -182,6 +194,7 @@ class Bombermen(pygame.sprite.Sprite):
         self.right_anim = anim_keys['right']
         self.nazad_anim = anim_keys['nazad']
         self.die_anim = anim_keys['die']
+        self.victory_im = anim_keys['victory']
         
         self.sp = self.front_anim
         self.c = 0
@@ -549,12 +562,6 @@ class Bonus(pygame.sprite.Sprite):
         self.kill()
 
 
-board = Board(15, 13)
-#board.set_view(5, 50, cell_size)
-dying_bricks = pygame.sprite.Group()
-
-
-
 dict_1 = {'execute_bomb': pygame.K_RETURN,
           'up': pygame.K_UP,
           'down': pygame.K_DOWN,
@@ -570,41 +577,53 @@ dict_2 = {'execute_bomb': pygame.K_e,
           'podriv': pygame.K_TAB}
 
 
-anim_keys_2 = {'front': orange_front_anim,
+anim_keys_1 = {'front': orange_front_anim,
                'nazad': orange_nazad_anim,
                'left': orange_left_anim,
                'right': orange_right_anim,
-               'die': orange_die_anim}
+               'die': orange_die_anim,
+               'victory': orange_victory}
 
-anim_keys_1 = {'front': white_front_anim,
+anim_keys_2 = {'front': white_front_anim,
                'nazad': white_nazad_anim,
                'left': white_left_anim,
                'right': white_right_anim,
-               'die': white_die_anim}
+               'die': white_die_anim,
+               'victory': white_victory}
 
 
-player_1 = Bombermen((cell_size + 5, 40 + cell_size * 2), dict_1, anim_keys_2)
-player_2 = Bombermen((cell_size * 14 - 25, 45 + cell_size * 12), dict_2, anim_keys_1)
 
-players = pygame.sprite.Group()
+def settings():
+    global board, players, bonuses, fires, bombs, dying_bricks, is_game_now
+    board = Board(15, 13)
+    #board.set_view(5, 50, cell_size)
+    dying_bricks = pygame.sprite.Group()
+    
+    player_1 = Bombermen((cell_size + 5, 40 + cell_size * 2), dict_1, anim_keys_1)
+    player_2 = Bombermen((cell_size * 14 - 25, 45 + cell_size * 12), dict_2, anim_keys_2)
 
-players.add(player_1)
-players.add(player_2)
+    players = pygame.sprite.Group()
 
-bonuses = pygame.sprite.Group()
-ban = Bonus((2, 2), bonus_plus_bomb, 'plus_bomb')
-ban3 = Bonus((4, 5), bonus_plus_bomb, 'plus_bomb')
-ban2 = Bonus((6, 5), bonus_plus_bomb, 'plus_bomb')
-#bonuses.add(ban)
-#bonuses.add(ban2)
-#bonuses.add(ban3)
+    players.add(player_1)
+    players.add(player_2)
+
+    bonuses = pygame.sprite.Group()
+    #ban = Bonus((2, 2), bonus_plus_bomb, 'plus_bomb')
+    #ban3 = Bonus((4, 5), bonus_plus_bomb, 'plus_bomb')
+    #ban2 = Bonus((6, 5), bonus_plus_bomb, 'plus_bomb')
+    #bonuses.add(ban)
+    #bonuses.add(ban2)
+    #bonuses.add(ban3)
 
 
-fires = pygame.sprite.Group()
+    fires = pygame.sprite.Group()
 
 
-bombs = pygame.sprite.Group()
+    bombs = pygame.sprite.Group()
+    is_game_now = True
 
+
+settings()
 
 run = True
 while run:
@@ -621,28 +640,41 @@ while run:
                 else:
                     sc = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
                     is_full_screen = 1
+            elif event.key == pygame.K_SPACE:
+                if not is_game_now:
+                    settings()
     
     keys = pygame.key.get_pressed()
     
     
-    
-    sc.fill(BLACK)
-    
-    
-    board.render()
-    for i in players:
-        if i.lifes:
-            i.anim(keys)
-    players.update()
-    dying_bricks.update()
-    bonuses.update()
-    
-    for i in bombs:
-        pos = i.update()
-        if pos:
-            fires.add(Fire(pos, i.max_size_fire))
-    
-    fires.update()
+    if is_game_now:
+        sc.fill(BLACK)
+        
+        
+        board.render()
+        for i in players:
+            if i.lifes:
+                i.anim(keys)
+        players.update()
+        dying_bricks.update()
+        bonuses.update()
+        
+        for i in bombs:
+            pos = i.update()
+            if pos:
+                fires.add(Fire(pos, i.max_size_fire))
+        
+        fires.update()
+        if len(players) != 2:
+            is_game_now = False
+            time.sleep(0.5)
+            if players:
+                winner = players.sprites()[0]
+    else:
+        sc.blit(game_over_pole, (0, 0))
+        sc.blit(victory_word, (100, 10))
+        sc.blit(winner.victory_im, (150, 120))
+        sc.blit(myfont.render('press SPACE to restart', True, RED), (60, 400))
     
     clock.tick(FPS)
     pygame.display.flip()
