@@ -11,7 +11,7 @@ import time
 def load_image(name, colorkey=None):
     way = os.getcwd()
     #print(way)
-    fullname = way + '\\' +  os.path.join('data\\images\\', name)
+    fullname = way + '\\' + os.path.join('data\\images\\', name)
     #print(fullname)
     image = pygame.image.load(fullname).convert()
     if colorkey is not None:
@@ -28,7 +28,10 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 cell_size = 32
 is_full_screen = 0
-is_game_now = True
+is_game_now = False
+is_it_start = True
+is_music_playing = 1
+is_sounds_playing = 1
 
 
 with open('data\\stages\\stage_1.txt', encoding='utf-8') as f:
@@ -42,6 +45,7 @@ pygame.init()
 pygame.font.init()
 myfont = pygame.font.SysFont('sitkasmallsitkatextbolditalicsitkasubheadingbolditalicsitkaheadingbolditalicsitkadisplaybolditalicsitkabannerbolditalic', 35, bold = True)
 
+#pygame.mouse.set_visible(False)
 
 w, h = cell_size * 15 + 10, cell_size * 13 + 55 #490, 471
 
@@ -97,7 +101,10 @@ bonus_die = resize_sp([load_image(f'bonuses\\die{i + 1}.png') for i in range(2)]
 game_over_pole = load_image(f'dich.png')
 victory_word = resize_sp([load_image(f'victory_word.png', -1) for i in range(1)])[0]
 
+start_im = load_image('start_image.png')
 
+sounds_im_sp = [load_image('icons\\sounds_off.png'), load_image('icons\\sounds_on.png')]
+music_im_sp = [load_image('icons\\music_off.png'), load_image('icons\\music_on.png')]
 
 FPS = 60
 clock = pygame.time.Clock()
@@ -106,6 +113,30 @@ bonus_sp = ((bonus_plus_bomb, 'plus_bomb'),
             (bonus_plus_speed, 'plus_speed'),
             (bonus_podrivnik, 'podrivnik'), 
             (bonus_die, 'die'))
+
+
+pygame.mixer.init()
+
+
+def play_music(music_name):
+    #music_name = 'BGM #06'
+    pygame.mixer.music.load(f'data\\music\\{music_name}.mp3')
+    pygame.mixer.music.play(-1)
+    if not is_music_playing % 2:
+        pygame.mixer.music.pause()
+    pygame.mixer.music.set_volume(0.3)
+
+def play_sound(sound):
+    if is_sounds_playing % 2:
+        sound.play()
+
+
+Global_Music = 'BGM #06'
+
+boom = pygame.mixer.Sound('data\\sounds\\boom.wav')
+boom.set_volume(0.3)
+bonus_sound = pygame.mixer.Sound('data\\sounds\\bonus.wav')
+bonus_sound.set_volume(0.3)
 
 
 class Board():
@@ -248,6 +279,7 @@ class Bombermen(pygame.sprite.Sprite):
         
         for i in bonuses:
             if i.pos == coord:
+                play_sound(bonus_sound)
                 i.die()
                 break
         
@@ -341,7 +373,7 @@ class Bombermen(pygame.sprite.Sprite):
         
         self.rect_in = pygame.Rect((self.rect.topleft[0] + int((1/5 * self.rect.width)), 
                                     self.rect.topleft[1] + int((1/1.8 * self.rect.height))), 
-                                    (self.rect.width - 2 * int((1/5 * self.rect.width)), 
+                                    (self.rect.width - 2.5 * int((1/5 * self.rect.width)), 
                                     self.rect.height - int((1/1.8 * self.rect.height))))
         
         for i in range(board.h):
@@ -359,6 +391,7 @@ class Bombermen(pygame.sprite.Sprite):
                         self.rect.bottomleft = (self.x, self.y)
         
         self.draw(surf)
+        # коммент ниже рисует рект, по которому определяются пересечения
         #pygame.draw.rect(sc, RED, self.rect_in)
     def die(self):
         
@@ -377,6 +410,7 @@ class Bombermen(pygame.sprite.Sprite):
         self.draw(surf)
         
         if self.c == self.lim:
+            pygame.mixer.music.stop()
             self.kill()
 
 
@@ -416,6 +450,7 @@ class Bomb(pygame.sprite.Sprite):
             
         
     def die(self):
+        play_sound(boom)
         self.kill()
         board.pole[self.pos[0]][self.pos[1]] = 'g'
         board.surfaces[self.pos[0]][self.pos[1]] = grass
@@ -456,8 +491,8 @@ class Fire(pygame.sprite.Sprite):
                                 break
                     
                     
-                    proverka_bomb(player_1.bombs)
-                    proverka_bomb(player_2.bombs)
+                    proverka_bomb(players.sprites()[0].bombs)
+                    proverka_bomb(players.sprites()[1].bombs)
                     proverka_bomb(bombs)
                 if next_cell in list(map(lambda x: x[1], bonus_sp)):
                     for i in bonuses:
@@ -562,14 +597,46 @@ class Bonus(pygame.sprite.Sprite):
         self.kill()
 
 
-dict_1 = {'execute_bomb': pygame.K_RETURN,
+class MusicSet(pygame.sprite.Sprite):
+    def __init__(self, im_sp, pos, tip):
+        pygame.sprite.Sprite.__init__(self)
+        self.sp = im_sp
+        if tip == 'music':
+            self.image = self.sp[is_music_playing % 2]
+        elif tip == 'sounds':
+            self.image = self.sp[is_sounds_playing % 2]
+        self.rect = self.image.get_rect()
+        self.rect.topleft = pos
+        self.tip = tip
+    
+    def on_click(self, mouse_pos):
+        if self.rect.collidepoint(mouse_pos):
+            self.func()
+    
+    def func(self):
+        global is_music_playing, is_sounds_playing
+        if self.tip == 'music':
+            is_music_playing += 1
+            if is_music_playing % 2:
+                pygame.mixer.music.unpause()
+            else:
+                pygame.mixer.music.pause()
+            self.image = self.sp[is_music_playing % 2]
+        elif self.tip == 'sounds':
+            is_sounds_playing += 1
+            self.image = self.sp[is_sounds_playing % 2]
+    
+    def draw(self):
+        sc.blit(self.image, self.rect)
+
+dict_2 = {'execute_bomb': pygame.K_RETURN,
           'up': pygame.K_UP,
           'down': pygame.K_DOWN,
           'left': pygame.K_LEFT,
           'right': pygame.K_RIGHT,
           'podriv': pygame.K_RSHIFT}
 
-dict_2 = {'execute_bomb': pygame.K_e,
+dict_1 = {'execute_bomb': pygame.K_e,
           'up': pygame.K_w,
           'down': pygame.K_s,
           'left': pygame.K_a,
@@ -594,7 +661,10 @@ anim_keys_2 = {'front': white_front_anim,
 
 
 def settings():
-    global board, players, bonuses, fires, bombs, dying_bricks, is_game_now
+    global board, players, bonuses, fires, bombs, dying_bricks, is_game_now, is_it_start, music_sets
+    
+    play_music(Global_Music)
+    
     board = Board(15, 13)
     #board.set_view(5, 50, cell_size)
     dying_bricks = pygame.sprite.Group()
@@ -607,6 +677,10 @@ def settings():
     players.add(player_1)
     players.add(player_2)
 
+    music_sets = pygame.sprite.Group()
+    music_sets.add(MusicSet(music_im_sp, (w - 50, 5), 'music'))
+    music_sets.add(MusicSet(sounds_im_sp, (w - 100, 5), 'sounds'))
+    
     bonuses = pygame.sprite.Group()
     #ban = Bonus((2, 2), bonus_plus_bomb, 'plus_bomb')
     #ban3 = Bonus((4, 5), bonus_plus_bomb, 'plus_bomb')
@@ -621,9 +695,9 @@ def settings():
 
     bombs = pygame.sprite.Group()
     is_game_now = True
+    is_it_start = False
 
 
-settings()
 
 run = True
 while run:
@@ -640,9 +714,15 @@ while run:
                 else:
                     sc = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
                     is_full_screen = 1
-            elif event.key == pygame.K_SPACE:
+            elif event.key == pygame.K_f:
                 if not is_game_now:
+                    pygame.mixer.music.stop()
+                    time.sleep(0.5)
                     settings()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            for i in music_sets:
+                i.on_click(event.pos)
+                    
     
     keys = pygame.key.get_pressed()
     
@@ -652,6 +732,8 @@ while run:
         
         
         board.render()
+        
+        music_sets.draw(sc)
         for i in players:
             if i.lifes:
                 i.anim(keys)
@@ -670,11 +752,21 @@ while run:
             time.sleep(0.5)
             if players:
                 winner = players.sprites()[0]
+        #sc.blit(music_on_im, (w - 50, 5))
     else:
-        sc.blit(game_over_pole, (0, 0))
-        sc.blit(victory_word, (100, 10))
-        sc.blit(winner.victory_im, (150, 120))
-        sc.blit(myfont.render('press SPACE to restart', True, RED), (60, 400))
+        if not pygame.mixer.music.get_busy():
+            if is_it_start:
+                play_music('Title Theme')
+            else:
+                play_music('Victory')
+        if is_it_start:
+            sc.blit(start_im, (0, 0))
+        else:
+            sc.blit(game_over_pole, (0, 0))
+            sc.blit(victory_word, (100, 10))
+            sc.blit(winner.victory_im, (150, 120))
+            sc.blit(myfont.render('  press F to restart', True, RED), (60, 400))
+            
     
     clock.tick(FPS)
     pygame.display.flip()
